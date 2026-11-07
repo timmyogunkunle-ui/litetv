@@ -346,6 +346,7 @@ public class MainActivity extends Activity {
                         a.banner = r.activityInfo.loadBanner(pm);
                         if (a.banner == null) a.banner = r.activityInfo.applicationInfo.loadBanner(pm);
                     } catch (Exception ignored) {}
+                    applyCustom(a);
                     makeArt(a);
                     list.add(a);
                 }
@@ -497,11 +498,74 @@ public class MainActivity extends Activity {
     void menu(final App a) {
         boolean pinned = pins().contains(a.pkg);
         new AlertDialog.Builder(this).setTitle(a.label)
-                .setItems(new String[]{"Open", pinned ? "Unpin" : "Pin to top", "App info"}, new DialogInterface.OnClickListener() {
+                .setItems(new String[]{"Open", pinned ? "Unpin" : "Pin to top", "Rename", "Custom icon", "Reset name & icon", "App info"}, new DialogInterface.OnClickListener() {
                     public void onClick(DialogInterface d, int w) {
-                        if (w == 0) launch(a); else if (w == 1) togglePin(a); else appInfo(a);
+                        if (w == 0) launch(a);
+                        else if (w == 1) togglePin(a);
+                        else if (w == 2) rename(a);
+                        else if (w == 3) iconHelp(a);
+                        else if (w == 4) resetCustom(a);
+                        else appInfo(a);
                     }
                 }).show();
+    }
+
+    // ---------------------------------------------------------------- custom names & icons
+
+    java.io.File iconFile(String pkg) {
+        java.io.File dir = getExternalFilesDir("icons");
+        return dir == null ? null : new java.io.File(dir, pkg + ".png");
+    }
+
+    /** Applies a saved custom name and an icon image dropped in .../files/icons/<package>.png */
+    void applyCustom(App a) {
+        String name = prefs.getString("label_" + a.pkg, null);
+        if (name != null && name.length() > 0) a.label = name;
+        try {
+            java.io.File f = iconFile(a.pkg);
+            if (f != null && f.exists()) {
+                Bitmap bm = BitmapFactory.decodeFile(f.getAbsolutePath());
+                if (bm != null) {
+                    BitmapDrawable d = new BitmapDrawable(getResources(), bm);
+                    if (bm.getWidth() > bm.getHeight() * 1.3f) { a.banner = d; }
+                    else { a.icon = d; a.banner = null; }
+                }
+            }
+        } catch (Exception ignored) {}
+    }
+
+    void rename(final App a) {
+        final EditText in = new EditText(this);
+        in.setSingleLine(true);
+        in.setText(a.label);
+        in.setSelectAllOnFocus(true);
+        new AlertDialog.Builder(this).setTitle("Rename app").setView(in)
+                .setPositiveButton("Save", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface d, int w) {
+                        prefs.edit().putString("label_" + a.pkg, in.getText().toString().trim()).apply();
+                        loadApps();
+                    }
+                }).setNegativeButton("Cancel", null).show();
+    }
+
+    void iconHelp(App a) {
+        java.io.File f = iconFile(a.pkg);
+        if (f != null) f.getParentFile().mkdirs();
+        String path = f == null ? "(storage unavailable)" : f.getAbsolutePath();
+        new AlertDialog.Builder(this).setTitle("Custom icon for " + a.label)
+                .setMessage("Copy a PNG (square = icon, wide 16:9 = banner) to:\n\n" + path
+                        + "\n\nFrom a PC with ADB:\nadb push icon.png " + path
+                        + "\n\nThen press Reload.")
+                .setPositiveButton("Reload", new DialogInterface.OnClickListener() {
+                    public void onClick(DialogInterface d, int w) { loadApps(); }
+                }).setNegativeButton("Close", null).show();
+    }
+
+    void resetCustom(App a) {
+        prefs.edit().remove("label_" + a.pkg).apply();
+        java.io.File f = iconFile(a.pkg);
+        if (f != null && f.exists()) f.delete();
+        loadApps();
     }
 
     void updateStatus() {
